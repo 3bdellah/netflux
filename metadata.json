@@ -1,0 +1,10 @@
+{
+  "name": "NetFlux",
+  "description": "High-performance network speed testing application featuring real-time download/upload metrics and modern animated gauges.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "Speed Test",
+    "Ping Analysis",
+    "Network Metrics"
+  ]
+}
