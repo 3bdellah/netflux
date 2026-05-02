@@ -94,7 +94,38 @@ function sanitizeHistoryEntries(value: unknown): HistoryEntry[] {
 
 function formatDateSafe(formatter: Intl.DateTimeFormat, value: string) {
   if (!isValidDateString(value)) return "--";
-  return formatter.format(new Date(value));
+
+  try {
+    return formatter.format(new Date(value));
+  } catch {
+    return "--";
+  }
+}
+
+function readSavedHistory() {
+  try {
+    const savedHistory = window.localStorage.getItem(HISTORY_KEY);
+    return savedHistory ? sanitizeHistoryEntries(JSON.parse(savedHistory)) : [];
+  } catch {
+    removeSavedHistory();
+    return [];
+  }
+}
+
+function persistHistory(history: HistoryEntry[]) {
+  try {
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_LIMIT)));
+  } catch {
+    // The final result should still render even when storage is blocked.
+  }
+}
+
+function removeSavedHistory() {
+  try {
+    window.localStorage.removeItem(HISTORY_KEY);
+  } catch {
+    // Ignore unavailable storage.
+  }
 }
 
 function getStageState(
@@ -144,24 +175,15 @@ export default function SpeedTest() {
   };
 
   useEffect(() => {
-    try {
-      const savedHistory = window.localStorage.getItem(HISTORY_KEY);
-      if (!savedHistory) return;
-      const parsed = JSON.parse(savedHistory);
-      const sanitized = sanitizeHistoryEntries(parsed);
-      if (sanitized.length) {
-        setHistory(sanitized.slice(0, HISTORY_LIMIT));
-      } else {
-        window.localStorage.removeItem(HISTORY_KEY);
-      }
-    } catch {
-      // Ignore invalid local history.
-      window.localStorage.removeItem(HISTORY_KEY);
+    const savedHistory = readSavedHistory();
+
+    if (savedHistory.length) {
+      setHistory(savedHistory.slice(0, HISTORY_LIMIT));
     }
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_LIMIT)));
+    persistHistory(history);
   }, [history]);
 
   useEffect(() => {
@@ -496,7 +518,7 @@ export default function SpeedTest() {
             <button
               onClick={() => {
                 setHistory([]);
-                window.localStorage.removeItem(HISTORY_KEY);
+                removeSavedHistory();
               }}
               className="control-button px-4 py-3 text-[11px]"
             >
@@ -550,12 +572,12 @@ function FinalResultPanel({
         </span>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <FinalResultStat label="Ping" value={formatLatency(result.ping)} unit="ms" />
-        <FinalResultStat label="Download" value={formatSpeed(result.download)} unit="Mbps" />
-        <FinalResultStat label="Upload" value={formatSpeed(result.upload)} unit="Mbps" />
+        <FinalResultStat label="Ping" value={formatLatency(result.ping, true)} unit="ms" />
+        <FinalResultStat label="Download" value={formatSpeed(result.download, true)} unit="Mbps" />
+        <FinalResultStat label="Upload" value={formatSpeed(result.upload, true)} unit="Mbps" />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-300">
-        <span>Jitter: {formatLatency(result.jitter)} ms</span>
+        <span>Jitter: {formatLatency(result.jitter, true)} ms</span>
         <span>Accuracy: {result.accuracy}</span>
       </div>
     </div>
