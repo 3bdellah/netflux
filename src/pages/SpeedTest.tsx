@@ -576,9 +576,9 @@ export default function SpeedTest() {
             <MetricCard
               icon={<ArrowUp size={18} />}
               label="Upload"
-              value={formatSpeed(displayedUpload, phase === "UPLOAD")}
+              value={formatSpeed(displayedUpload, phase === "UPLOAD" || phase === "COMPLETED")}
               unit="Mbps"
-              active={phase === "UPLOAD"}
+              active={phase === "UPLOAD" || phase === "COMPLETED"}
             />
           </div>
         </div>

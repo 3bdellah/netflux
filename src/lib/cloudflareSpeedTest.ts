@@ -108,11 +108,28 @@ export async function runCloudflareSpeedTest(
 
   assertNotAborted(signal);
   onPhaseChange?.("upload");
-  const uploadResult = await testUpload({
-    signal,
-    maxRetries: options.maxRetries,
-    onProgress: onUploadProgress,
-  });
+  let uploadResult: ThroughputTestResult;
+
+  try {
+    uploadResult = await testUpload({
+      signal,
+      maxRetries: options.maxRetries,
+      onProgress: onUploadProgress,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+
+    console.warn("Cloudflare upload test failed; completing with upload unavailable.", error);
+    uploadResult = createUnavailableThroughputResult();
+    onUploadProgress?.({
+      progress: 1,
+      currentMbps: 0,
+      averageMbps: 0,
+      transferredBytes: 0,
+    });
+  }
 
   return {
     download: downloadResult.mbps,
@@ -365,7 +382,13 @@ export async function testUpload({
   );
 
   if (!warmupResult.ok) {
-    throw new Error("Unable to warm up the Cloudflare upload test.");
+    onProgress?.({
+      progress: 1,
+      currentMbps: 0,
+      averageMbps: 0,
+      transferredBytes: 0,
+    });
+    return createUnavailableThroughputResult(1, Math.max(warmupResult.attempts - 1, 0));
   }
 
   const tracker = createThroughputTracker();
@@ -442,7 +465,13 @@ export async function testUpload({
       };
     }
 
-    throw new Error("Unable to complete Cloudflare upload test.");
+    onProgress?.({
+      progress: 1,
+      currentMbps: 0,
+      averageMbps: 0,
+      transferredBytes: 0,
+    });
+    return createUnavailableThroughputResult(Math.max(failures, 1), retries);
   }
 
   const stableMeasurements = filterOutlierMeasurements(measurements);
@@ -515,6 +544,16 @@ function weightedAverage(values: Array<{ value: number; weight: number }>) {
   }
 
   return values.reduce((total, item) => total + item.value * item.weight, 0) / totalWeight;
+}
+
+function createUnavailableThroughputResult(failures = 1, retries = 0): ThroughputTestResult {
+  return {
+    mbps: 0,
+    samples: [],
+    successfulRequests: 0,
+    retries,
+    failures,
+  };
 }
 
 function calculateJitter(samples: number[]) {
@@ -836,6 +875,10 @@ function deriveAccuracy(
   downloadResult: ThroughputTestResult,
   uploadResult: ThroughputTestResult,
 ): AccuracyLevel {
+  if (uploadResult.successfulRequests === 0 && uploadResult.mbps <= 0) {
+    return "low";
+  }
+
   let score = 0;
 
   if (latencyResult.successfulRequests >= 10) {
