@@ -141,6 +141,13 @@ function persistHistory(history: HistoryEntry[]) {
   }
 }
 
+function mergeHistoryEntry(previous: HistoryEntry[], entry: HistoryEntry) {
+  return [
+    entry,
+    ...previous.filter((item) => item.createdAt !== entry.createdAt),
+  ].slice(0, HISTORY_LIMIT);
+}
+
 function readFinalResult() {
   try {
     const savedResult = window.sessionStorage.getItem(FINAL_RESULT_KEY);
@@ -203,6 +210,7 @@ export default function SpeedTest() {
   });
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [finalResult, setFinalResult] = useState<FinalResult | null>(null);
+  const latestHistoryKey = history[0]?.createdAt ?? null;
   const historyDateFormatter = useMemo(
     () => new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }),
     [],
@@ -363,15 +371,12 @@ export default function SpeedTest() {
       setProgress(1);
       setPhase("COMPLETED");
       setStatusText("Completed");
-      setHistory((previous) => [
-        {
-          ...completedResult,
-          createdAt: completedAt,
-          serverCity: serverInfo.city,
-          serverCode: serverInfo.code,
-        },
-        ...previous,
-      ].slice(0, HISTORY_LIMIT));
+      saveCompletedResult({
+        ...completedResult,
+        createdAt: completedAt,
+        serverCity: serverInfo.city,
+        serverCode: serverInfo.code,
+      });
     } catch (error) {
       if (isAbortError(error)) {
         setPhase("STOPPED");
@@ -394,6 +399,14 @@ export default function SpeedTest() {
 
   const stopTest = () => {
     abortControllerRef.current?.abort();
+  };
+
+  const saveCompletedResult = (entry: HistoryEntry) => {
+    setHistory((previous) => {
+      const nextHistory = mergeHistoryEntry(previous, entry);
+      persistHistory(nextHistory);
+      return nextHistory;
+    });
   };
 
   const displayedDownload = phase === "DOWNLOAD" ? normalizeMetric(liveSpeed) || stats.download : stats.download;
@@ -575,7 +588,14 @@ export default function SpeedTest() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.32em] text-slate-400">Recent Tests</div>
-            <h2 className="mt-2 text-xl font-medium tracking-[-0.04em] text-white">History</h2>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-medium tracking-[-0.04em] text-white">History</h2>
+              {phase === "COMPLETED" && latestHistoryKey === finalResult?.completedAt && (
+                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-emerald-200">
+                  Updated
+                </span>
+              )}
+            </div>
           </div>
           {history.length > 0 && (
             <button
@@ -599,7 +619,11 @@ export default function SpeedTest() {
             history.map((entry, index) => (
               <div
                 key={`${entry.createdAt}-${index}`}
-                className="grid gap-3 rounded-[1.4rem] border border-white/8 bg-white/[0.03] px-4 py-4 md:grid-cols-[1.25fr_repeat(3,minmax(0,1fr))]"
+                className={`grid gap-3 rounded-[1.4rem] border px-4 py-4 md:grid-cols-[1.25fr_repeat(3,minmax(0,1fr))] ${
+                  index === 0 && entry.createdAt === finalResult?.completedAt
+                    ? "border-emerald-300/20 bg-emerald-400/8"
+                    : "border-white/8 bg-white/[0.03]"
+                }`}
               >
                 <div className="flex flex-col">
                   <span className="font-medium text-white">{entry.serverCity}</span>
