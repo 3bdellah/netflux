@@ -33,6 +33,7 @@ interface FinalResult extends SpeedStats {
 }
 
 const HISTORY_KEY = "netflux-speed-history";
+const FINAL_RESULT_KEY = "netflux-final-result";
 const HISTORY_LIMIT = 5;
 const SPEED_PRECISION = 2;
 const LATENCY_PRECISION = 1;
@@ -92,6 +93,26 @@ function sanitizeHistoryEntries(value: unknown): HistoryEntry[] {
     .filter((entry): entry is HistoryEntry => entry !== null);
 }
 
+function sanitizeFinalResult(value: unknown): FinalResult | null {
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value as Partial<FinalResult>;
+  const completedAt = candidate.completedAt;
+
+  if (!isValidDateString(completedAt)) {
+    return null;
+  }
+
+  return {
+    completedAt,
+    ping: normalizeMetric(Number(candidate.ping)),
+    download: normalizeMetric(Number(candidate.download)),
+    upload: normalizeMetric(Number(candidate.upload)),
+    jitter: normalizeMetric(Number(candidate.jitter)),
+    accuracy: candidate.accuracy === "high" || candidate.accuracy === "medium" ? candidate.accuracy : "low",
+  };
+}
+
 function formatDateSafe(formatter: Intl.DateTimeFormat, value: string) {
   if (!isValidDateString(value)) return "--";
 
@@ -117,6 +138,32 @@ function persistHistory(history: HistoryEntry[]) {
     window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_LIMIT)));
   } catch {
     // The final result should still render even when storage is blocked.
+  }
+}
+
+function readFinalResult() {
+  try {
+    const savedResult = window.sessionStorage.getItem(FINAL_RESULT_KEY);
+    return savedResult ? sanitizeFinalResult(JSON.parse(savedResult)) : null;
+  } catch {
+    removeFinalResult();
+    return null;
+  }
+}
+
+function persistFinalResult(result: FinalResult) {
+  try {
+    window.sessionStorage.setItem(FINAL_RESULT_KEY, JSON.stringify(result));
+  } catch {
+    // The visible result is already in React state.
+  }
+}
+
+function removeFinalResult() {
+  try {
+    window.sessionStorage.removeItem(FINAL_RESULT_KEY);
+  } catch {
+    // Ignore unavailable storage.
   }
 }
 
@@ -176,9 +223,22 @@ export default function SpeedTest() {
 
   useEffect(() => {
     const savedHistory = readSavedHistory();
+    const savedFinalResult = readFinalResult();
 
     if (savedHistory.length) {
       setHistory(savedHistory.slice(0, HISTORY_LIMIT));
+    }
+
+    if (savedFinalResult) {
+      setFinalResult(savedFinalResult);
+      setStats({
+        ping: savedFinalResult.ping,
+        download: savedFinalResult.download,
+        upload: savedFinalResult.upload,
+      });
+      setProgress(1);
+      setPhase("COMPLETED");
+      setStatusText("Completed");
     }
   }, []);
 
@@ -232,6 +292,7 @@ export default function SpeedTest() {
     setPhase("PING");
     setStats({ ping: null, download: 0, upload: 0 });
     setFinalResult(null);
+    removeFinalResult();
     setLiveSpeed(0);
     setProgress(0);
     setStatusText("Checking latency");
@@ -288,14 +349,16 @@ export default function SpeedTest() {
         upload: normalizeMetric(result.upload),
       };
       const completedAt = new Date().toISOString();
-
-      setStats(completedResult);
-      setFinalResult({
+      const finalResultSnapshot: FinalResult = {
         ...completedResult,
         jitter: normalizeMetric(result.jitter),
         accuracy: result.accuracy,
         completedAt,
-      });
+      };
+
+      setStats(completedResult);
+      setFinalResult(finalResultSnapshot);
+      persistFinalResult(finalResultSnapshot);
       setLiveSpeed(0);
       setProgress(1);
       setPhase("COMPLETED");
@@ -476,7 +539,7 @@ export default function SpeedTest() {
                 )}
               </div>
 
-              {phase === "COMPLETED" && finalResult && (
+              {finalResult && (
                 <FinalResultPanel result={finalResult} dateFormatter={historyDateFormatter} />
               )}
             </div>
@@ -985,9 +1048,10 @@ function polarToCartesian(centerX: number, centerY: number, radius: number, angl
 }
 
 function describeArc(x: number, y: number, radius: number, startAngle: number, endAngle: number) {
+  const safeEndAngle = Math.abs(endAngle - startAngle) < 0.01 ? startAngle + 0.01 : endAngle;
   const start = polarToCartesian(x, y, radius, startAngle);
-  const end = polarToCartesian(x, y, radius, endAngle);
-  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  const end = polarToCartesian(x, y, radius, safeEndAngle);
+  const largeArcFlag = safeEndAngle - startAngle <= 180 ? "0" : "1";
 
   return [
     "M",
