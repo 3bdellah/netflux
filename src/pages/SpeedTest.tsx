@@ -20,21 +20,13 @@ interface ServerInfo {
   code: string;
 }
 
-interface HistoryEntry extends SpeedStats {
-  createdAt: string;
-  serverCity: string;
-  serverCode: string;
-}
-
 interface FinalResult extends SpeedStats {
   jitter: number;
   accuracy: AccuracyLevel;
   completedAt: string;
 }
 
-const HISTORY_KEY = "netflux-speed-history";
 const FINAL_RESULT_KEY = "netflux-final-result";
-const HISTORY_LIMIT = 5;
 const SPEED_PRECISION = 2;
 const LATENCY_PRECISION = 1;
 const SPEED_SCALE_MAX_MBPS = 1000;
@@ -63,34 +55,6 @@ function normalizeMetric(value: number) {
 
 function isValidDateString(value: unknown) {
   return typeof value === "string" && Number.isFinite(new Date(value).getTime());
-}
-
-function sanitizeHistoryEntries(value: unknown): HistoryEntry[] {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((entry): HistoryEntry | null => {
-      if (!entry || typeof entry !== "object") return null;
-      const candidate = entry as Partial<HistoryEntry>;
-
-      if (
-        !isValidDateString(candidate.createdAt) ||
-        typeof candidate.serverCity !== "string" ||
-        typeof candidate.serverCode !== "string"
-      ) {
-        return null;
-      }
-
-      return {
-        createdAt: candidate.createdAt,
-        serverCity: candidate.serverCity,
-        serverCode: candidate.serverCode,
-        ping: normalizeMetric(Number(candidate.ping)),
-        download: normalizeMetric(Number(candidate.download)),
-        upload: normalizeMetric(Number(candidate.upload)),
-      };
-    })
-    .filter((entry): entry is HistoryEntry => entry !== null);
 }
 
 function sanitizeFinalResult(value: unknown): FinalResult | null {
@@ -123,31 +87,6 @@ function formatDateSafe(formatter: Intl.DateTimeFormat, value: string) {
   }
 }
 
-function readSavedHistory() {
-  try {
-    const savedHistory = window.localStorage.getItem(HISTORY_KEY);
-    return savedHistory ? sanitizeHistoryEntries(JSON.parse(savedHistory)) : [];
-  } catch {
-    removeSavedHistory();
-    return [];
-  }
-}
-
-function persistHistory(history: HistoryEntry[]) {
-  try {
-    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_LIMIT)));
-  } catch {
-    // The final result should still render even when storage is blocked.
-  }
-}
-
-function mergeHistoryEntry(previous: HistoryEntry[], entry: HistoryEntry) {
-  return [
-    entry,
-    ...previous.filter((item) => item.createdAt !== entry.createdAt),
-  ].slice(0, HISTORY_LIMIT);
-}
-
 function readFinalResult() {
   try {
     const savedResult = window.sessionStorage.getItem(FINAL_RESULT_KEY);
@@ -169,14 +108,6 @@ function persistFinalResult(result: FinalResult) {
 function removeFinalResult() {
   try {
     window.sessionStorage.removeItem(FINAL_RESULT_KEY);
-  } catch {
-    // Ignore unavailable storage.
-  }
-}
-
-function removeSavedHistory() {
-  try {
-    window.localStorage.removeItem(HISTORY_KEY);
   } catch {
     // Ignore unavailable storage.
   }
@@ -208,9 +139,7 @@ export default function SpeedTest() {
     city: "Locating...",
     code: "NETFLUX",
   });
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [finalResult, setFinalResult] = useState<FinalResult | null>(null);
-  const latestHistoryKey = history[0]?.createdAt ?? null;
   const historyDateFormatter = useMemo(
     () => new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }),
     [],
@@ -230,12 +159,7 @@ export default function SpeedTest() {
   };
 
   useEffect(() => {
-    const savedHistory = readSavedHistory();
     const savedFinalResult = readFinalResult();
-
-    if (savedHistory.length) {
-      setHistory(savedHistory.slice(0, HISTORY_LIMIT));
-    }
 
     if (savedFinalResult) {
       setFinalResult(savedFinalResult);
@@ -249,10 +173,6 @@ export default function SpeedTest() {
       setStatusText("Completed");
     }
   }, []);
-
-  useEffect(() => {
-    persistHistory(history);
-  }, [history]);
 
   useEffect(() => {
     let cancelled = false;
@@ -371,12 +291,6 @@ export default function SpeedTest() {
       setProgress(1);
       setPhase("COMPLETED");
       setStatusText("Completed");
-      saveCompletedResult({
-        ...completedResult,
-        createdAt: completedAt,
-        serverCity: serverInfo.city,
-        serverCode: serverInfo.code,
-      });
     } catch (error) {
       if (isAbortError(error)) {
         setPhase("STOPPED");
@@ -399,14 +313,6 @@ export default function SpeedTest() {
 
   const stopTest = () => {
     abortControllerRef.current?.abort();
-  };
-
-  const saveCompletedResult = (entry: HistoryEntry) => {
-    setHistory((previous) => {
-      const nextHistory = mergeHistoryEntry(previous, entry);
-      persistHistory(nextHistory);
-      return nextHistory;
-    });
   };
 
   const displayedDownload = phase === "DOWNLOAD" ? normalizeMetric(liveSpeed) || stats.download : stats.download;
@@ -584,61 +490,6 @@ export default function SpeedTest() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-5 px-1">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.32em] text-slate-400">Recent Tests</div>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h2 className="text-xl font-medium tracking-[-0.04em] text-white">History</h2>
-              {phase === "COMPLETED" && latestHistoryKey === finalResult?.completedAt && (
-                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-emerald-200">
-                  Updated
-                </span>
-              )}
-            </div>
-          </div>
-          {history.length > 0 && (
-            <button
-              onClick={() => {
-                setHistory([]);
-                removeSavedHistory();
-              }}
-              className="control-button px-4 py-3 text-[11px]"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-
-        <div className="mt-5 grid gap-3">
-          {history.length === 0 ? (
-            <div className="rounded-[1.4rem] border border-white/8 bg-white/[0.03] px-4 py-6 text-sm text-slate-400">
-              No saved results yet.
-            </div>
-          ) : (
-            history.map((entry, index) => (
-              <div
-                key={`${entry.createdAt}-${index}`}
-                className={`grid gap-3 rounded-[1.4rem] border px-4 py-4 md:grid-cols-[1.25fr_repeat(3,minmax(0,1fr))] ${
-                  index === 0 && entry.createdAt === finalResult?.completedAt
-                    ? "border-emerald-300/20 bg-emerald-400/8"
-                    : "border-white/8 bg-white/[0.03]"
-                }`}
-              >
-                <div className="flex flex-col">
-                  <span className="font-medium text-white">{entry.serverCity}</span>
-                  <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {entry.serverCode} / {formatDateSafe(historyDateFormatter, entry.createdAt)}
-                  </span>
-                </div>
-                <ResultCell label="Ping" value={formatLatency(entry.ping)} unit="ms" />
-                <ResultCell label="Download" value={formatSpeed(entry.download)} unit="Mbps" />
-                <ResultCell label="Upload" value={formatSpeed(entry.upload)} unit="Mbps" />
-              </div>
-            ))
-          )}
-        </div>
-      </section>
     </div>
   );
 }
@@ -756,26 +607,6 @@ function MetricCard({
       <div className="mt-4 flex items-end gap-2">
         <span className="text-3xl font-medium tracking-[-0.05em] text-white">{value}</span>
         <span className="pb-1 text-xs uppercase tracking-[0.24em] text-slate-500">{unit}</span>
-      </div>
-    </div>
-  );
-}
-
-function ResultCell({
-  label,
-  value,
-  unit,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-}) {
-  return (
-    <div className="flex flex-col">
-      <span className="text-[10px] uppercase tracking-[0.22em] text-slate-500">{label}</span>
-      <div className="mt-2 flex items-baseline gap-1">
-        <span className="font-medium text-white">{value}</span>
-        <span className="text-xs uppercase tracking-[0.2em] text-slate-500">{unit}</span>
       </div>
     </div>
   );
