@@ -60,6 +60,43 @@ function normalizeMetric(value: number) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+function isValidDateString(value: unknown) {
+  return typeof value === "string" && Number.isFinite(new Date(value).getTime());
+}
+
+function sanitizeHistoryEntries(value: unknown): HistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry): HistoryEntry | null => {
+      if (!entry || typeof entry !== "object") return null;
+      const candidate = entry as Partial<HistoryEntry>;
+
+      if (
+        !isValidDateString(candidate.createdAt) ||
+        typeof candidate.serverCity !== "string" ||
+        typeof candidate.serverCode !== "string"
+      ) {
+        return null;
+      }
+
+      return {
+        createdAt: candidate.createdAt,
+        serverCity: candidate.serverCity,
+        serverCode: candidate.serverCode,
+        ping: normalizeMetric(Number(candidate.ping)),
+        download: normalizeMetric(Number(candidate.download)),
+        upload: normalizeMetric(Number(candidate.upload)),
+      };
+    })
+    .filter((entry): entry is HistoryEntry => entry !== null);
+}
+
+function formatDateSafe(formatter: Intl.DateTimeFormat, value: string) {
+  if (!isValidDateString(value)) return "--";
+  return formatter.format(new Date(value));
+}
+
 function getStageState(
   phase: TestPhase,
   progressValue: number,
@@ -110,12 +147,16 @@ export default function SpeedTest() {
     try {
       const savedHistory = window.localStorage.getItem(HISTORY_KEY);
       if (!savedHistory) return;
-      const parsed = JSON.parse(savedHistory) as HistoryEntry[];
-      if (Array.isArray(parsed)) {
-        setHistory(parsed.slice(0, HISTORY_LIMIT));
+      const parsed = JSON.parse(savedHistory);
+      const sanitized = sanitizeHistoryEntries(parsed);
+      if (sanitized.length) {
+        setHistory(sanitized.slice(0, HISTORY_LIMIT));
+      } else {
+        window.localStorage.removeItem(HISTORY_KEY);
       }
     } catch {
       // Ignore invalid local history.
+      window.localStorage.removeItem(HISTORY_KEY);
     }
   }, []);
 
@@ -478,7 +519,7 @@ export default function SpeedTest() {
                 <div className="flex flex-col">
                   <span className="font-medium text-white">{entry.serverCity}</span>
                   <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {entry.serverCode} / {historyDateFormatter.format(new Date(entry.createdAt))}
+                    {entry.serverCode} / {formatDateSafe(historyDateFormatter, entry.createdAt)}
                   </span>
                 </div>
                 <ResultCell label="Ping" value={formatLatency(entry.ping)} unit="ms" />
@@ -505,7 +546,7 @@ function FinalResultPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] uppercase tracking-[0.26em] text-emerald-200">Final Test Result</span>
         <span className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/70">
-          {dateFormatter.format(new Date(result.completedAt))}
+          {formatDateSafe(dateFormatter, result.completedAt)}
         </span>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
