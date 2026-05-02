@@ -367,6 +367,7 @@ export default function SpeedTest() {
     return 0;
   }, [phase, progress]);
   const progressValue = isRunning || phase === "COMPLETED" ? Math.min(overallProgress, 1) : 0;
+  const isCompleted = phase === "COMPLETED";
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 pb-8">
@@ -468,23 +469,26 @@ export default function SpeedTest() {
             <MetricCard
               icon={<TimerReset size={18} />}
               label="Ping"
-              value={formatLatency(stats.ping, phase === "PING")}
+              value={formatLatency(stats.ping, phase === "PING" || isCompleted)}
               unit="ms"
               active={phase === "PING"}
+              finalMode={isCompleted}
             />
             <MetricCard
               icon={<ArrowDown size={18} />}
               label="Download"
-              value={formatSpeed(displayedDownload, phase === "DOWNLOAD")}
+              value={formatSpeed(displayedDownload, phase === "DOWNLOAD" || isCompleted)}
               unit="Mbps"
               active={phase === "DOWNLOAD"}
+              finalMode={isCompleted}
             />
             <MetricCard
               icon={<ArrowUp size={18} />}
               label="Upload"
-              value={formatSpeed(displayedUpload, phase === "UPLOAD" || phase === "COMPLETED")}
+              value={formatSpeed(displayedUpload, phase === "UPLOAD" || isCompleted)}
               unit="Mbps"
-              active={phase === "UPLOAD" || phase === "COMPLETED"}
+              active={phase === "UPLOAD" || isCompleted}
+              finalMode={isCompleted}
             />
           </div>
         </div>
@@ -532,11 +536,11 @@ function FinalResultStat({
   unit: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2">
+    <div className="flex min-h-24 flex-col items-center justify-center rounded-xl border border-white/10 bg-slate-950/30 px-3 py-3 text-center">
       <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{label}</div>
-      <div className="mt-1 flex items-baseline gap-1.5">
-        <span className="text-lg font-medium text-white">{value}</span>
-        <span className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{unit}</span>
+      <div className="mt-2 flex flex-wrap items-baseline justify-center gap-1.5">
+        <span className="text-3xl font-black tracking-normal text-white sm:text-4xl">{value}</span>
+        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-300">{unit}</span>
       </div>
     </div>
   );
@@ -585,12 +589,14 @@ function MetricCard({
   value,
   unit,
   active,
+  finalMode = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   unit: string;
   active: boolean;
+  finalMode?: boolean;
 }) {
   return (
     <div
@@ -598,15 +604,19 @@ function MetricCard({
         active
           ? "border-sky-300/20 bg-sky-400/10 shadow-[0_18px_50px_rgba(56,189,248,0.08)]"
           : "border-white/8 bg-white/[0.03]"
-      }`}
+      } ${finalMode ? "flex min-h-36 flex-col items-center justify-center text-center" : ""}`}
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className={`flex items-center gap-3 ${finalMode ? "flex-col justify-center" : "justify-between"}`}>
         <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">{label}</div>
         <div className="rounded-full border border-white/8 bg-slate-950/45 p-2 text-slate-200">{icon}</div>
       </div>
-      <div className="mt-4 flex items-end gap-2">
-        <span className="text-3xl font-medium tracking-[-0.05em] text-white">{value}</span>
-        <span className="pb-1 text-xs uppercase tracking-[0.24em] text-slate-500">{unit}</span>
+      <div className={`mt-4 flex items-baseline gap-2 ${finalMode ? "justify-center" : ""}`}>
+        <span className={`${finalMode ? "text-4xl font-black tracking-normal" : "text-3xl font-medium tracking-[-0.05em]"} text-white`}>
+          {value}
+        </span>
+        <span className={`${finalMode ? "text-[11px] font-bold text-slate-300" : "pb-1 text-xs text-slate-500"} uppercase tracking-[0.24em]`}>
+          {unit}
+        </span>
       </div>
     </div>
   );
