@@ -375,7 +375,7 @@ export async function testUpload({
   let retries = 0;
   let failures = 0;
 
-  for (const bytes of UPLOAD_STAGE_BYTES) {
+  for (let stageIndex = 0; stageIndex < UPLOAD_STAGE_BYTES.length; stageIndex += 1) {
     assertNotAborted(signal);
 
     const remainingMs = getRemainingUploadMs();
@@ -383,6 +383,8 @@ export async function testUpload({
     if (remainingMs <= 0) {
       break;
     }
+
+    const bytes = UPLOAD_STAGE_BYTES[stageIndex];
 
     if (!payloadCache.has(bytes)) {
       payloadCache.set(bytes, createRandomPayload(bytes));
@@ -411,6 +413,17 @@ export async function testUpload({
 
     if (result.ok) {
       measurements.push(result.value);
+      const measuredBytes = measurements.reduce((total, measurement) => total + measurement.bytes, 0);
+      const averageMbps = weightedAverage(
+        measurements.map((measurement) => ({ value: measurement.mbps, weight: measurement.bytes })),
+      );
+
+      onProgress?.({
+        progress: Math.min(Math.max(tracker.transferredBytes, measuredBytes) / totalPlannedBytes, 1),
+        currentMbps: result.value.mbps,
+        averageMbps,
+        transferredBytes: Math.max(tracker.transferredBytes, measuredBytes),
+      });
     } else {
       failures += 1;
     }
