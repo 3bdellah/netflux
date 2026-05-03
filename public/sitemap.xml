@@ -19,10 +19,16 @@
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://netflux-khaki.vercel.app/privacy</loc>
+    <loc>https://netflux-khaki.vercel.app/privacy-policy</loc>
     <lastmod>2026-05-03</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://netflux-khaki.vercel.app/speed-test</loc>
+    <lastmod>2026-05-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://netflux-khaki.vercel.app/contact</loc>
