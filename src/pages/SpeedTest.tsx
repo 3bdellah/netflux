@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { ArrowDown, ArrowUp, RefreshCw, Square, TimerReset } from "lucide-react";
+import AdSlot from "../components/AdSlot";
 import SEO from "../components/SEO";
 import { isAbortError, runCloudflareSpeedTest, type AccuracyLevel } from "../lib/cloudflareSpeedTest";
 import { loadNetworkInfo } from "../lib/networkInfo";
@@ -493,6 +494,8 @@ export default function SpeedTest() {
           </div>
         </div>
       </section>
+
+      <AdSlot type="inline" className="max-w-4xl self-center" />
 
     </div>
   );
